@@ -1,0 +1,351 @@
+<%+header%>
+
+<div class="cbi-map">
+    <h2>QTUN Dashboard</h2>
+
+    <!-- GRID -->
+    <div class="grid">
+
+        <!-- NETWORK -->
+        <div class="card">
+            <h3>Status Jaringan</h3>
+            <p>IP: <span id="pub-ip">Loading...</span></p>
+            <p>ISP: <span id="isp-name">-</span></p>
+        </div>
+
+        <!-- CORE STATUS -->
+        <div class="card">
+            <h3>Core Status</h3>
+            <p>
+                Service:
+                <span id="core-status" class="status-badge">Checking...</span>
+            </p>
+            <p>
+                Mode:
+                <span id="mode-active">-</span>
+            </p>
+        </div>
+
+        <!-- CONTROL -->
+        <div class="card">
+            <h3>Control</h3>
+
+            <!-- MODE -->
+            <label>Mode:</label>
+            <select id="mode" onchange="saveSettings()">
+                <option value="zivpn">ZiVPN</option>
+                <option value="clash">Clash</option>
+                <option value="ssh">SSH</option>
+            </select>
+
+            <!-- AUTOSTART -->
+            <div style="margin-top:10px;">
+                <label>
+                    <input type="checkbox" id="autostart" onchange="saveSettings()">
+                    Auto Start
+                </label>
+            </div>
+
+            <!-- BUTTON -->
+            <div style="margin-top:15px;">
+                <button class="cbi-button cbi-button-apply" onclick="startTunnel()">Start</button>
+                <button class="cbi-button cbi-button-reset" onclick="stopTunnel()">Stop</button>
+            </div>
+        </div>
+    </div>
+    <!-- DASHBOARD ACCESS -->
+    <div id="clash-dashboard-card" class="card" style="margin-top:10px; display:none;">
+        <h3>Clash Dashboard</h3>
+
+        <p>Akses Web UI Clash:</p>
+
+        <div class="clash-btn-group">
+            <button class="clash-btn yacd-btn" onclick="openYacd()">
+                Open YACD
+            </button>
+
+            <button class="clash-btn zashboard-btn" onclick="openZashboard()">
+                Open Zashboard
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+}
+
+.card {
+    border: 1px solid #ccc;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-weight: bold;
+}
+
+.running {
+    background: #4CAF50;
+    color: white;
+}
+
+.stopped {
+    background: #f44336;
+    color: white;
+}
+
+
+.clash-btn-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+}
+
+.clash-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    text-align: center;
+    transition: all 0.25s ease;
+}
+
+.clash-btn:hover {
+    transform: translateY(-2px);
+    opacity: 0.9;
+}
+
+.yacd-btn {
+    background: #2196F3;
+    color: white;
+}
+
+.zashboard-btn {
+    background: #9C27B0;
+    color: white;
+}
+
+</style>
+
+<script type="text/javascript">
+
+let cachedIP = null;
+let cachedInfo = null;
+
+const IP = {
+    get: () => {
+        return XHR.get('/cgi-bin/luci/qtun/ipinfo', null, function() {})
+            .then(response => {
+                let data = response.json ? response.json() : response;
+                return data;
+            });
+    },
+
+    updateUI: (data) => {
+        if (!data || data.status !== "success") {
+            throw new Error("Invalid IP data");
+        }
+
+        document.getElementById('pub-ip').innerHTML = data.query || "-";
+        document.getElementById('isp-name').innerHTML =
+            `${data.country || "-"}, ${data.isp || "-"} (${data.as || "-"})`;
+
+        document.getElementById('isp-name').style.color = '#ff3333';
+    },
+
+    getIPInfo: () => {
+        if (cachedIP && cachedInfo) {
+            IP.updateUI(cachedInfo);
+            return;
+        }
+
+        XHR.get('/cgi-bin/luci/qtun/ipinfo', null, function(x, data) {
+            if (data && data.status === "success") {
+                cachedIP = data.query;
+                cachedInfo = data;
+                IP.updateUI(data);
+            } else {
+                document.getElementById('pub-ip').innerHTML = "Gagal mengambil IP";
+                document.getElementById('isp-name').innerHTML = "Silahkan Cek koneksi internat anda";
+            }
+        });
+    }
+};
+
+
+/* SAVE MODE + ENABLED */
+function saveSettings() {
+    let modeSelect = document.getElementById("mode");
+
+    /* BLOCK jika service sedang running */
+    if (modeSelect.disabled) {
+        return;
+    }
+
+    let mode = modeSelect.value;
+    let enabled = document.getElementById("autostart").checked ? "1" : "0";
+
+    XHR.post('<%=luci.dispatcher.build_url("admin/services/qtun/set_config")%>', {
+        mode: mode,
+        enabled: enabled
+    }, function(x) {});
+}
+
+let coreActionState = "idle"; 
+
+/* START */
+function startTunnel() {
+    coreActionState = "starting";
+
+    let statusEl = document.getElementById("core-status");
+    statusEl.innerHTML = "Starting...";
+    statusEl.className = "status-badge";
+
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/qtun/start")%>', null, function() {
+        cachedIP = null;
+        setTimeout(fetchData, 1500);
+    });
+}
+
+/* STOP */
+function stopTunnel() {
+    coreActionState = "stopping";
+
+    let statusEl = document.getElementById("core-status");
+    statusEl.innerHTML = "Stopping...";
+    statusEl.className = "status-badge";
+
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/qtun/stop")%>', null, function() {
+        cachedIP = null;
+        setTimeout(fetchData, 1000);
+    });
+}
+
+/* RESTART */
+function restartTunnel() {
+    coreActionState = "starting";
+
+    let statusEl = document.getElementById("core-status");
+    statusEl.innerHTML = "Restarting...";
+    statusEl.className = "status-badge";
+
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/qtun/restart")%>', null, function() {
+        cachedIP = null;
+        setTimeout(fetchData, 2000);
+    });
+}
+
+
+function openYacd() {
+    window.open('http://' + window.location.hostname + ':9090/ui/', '_blank');
+}
+
+function openZashboard() {
+    window.open('http://' + window.location.hostname + ':9090/ui/zashboard', '_blank');
+}
+
+/* STATUS FETCH (Hanya untuk Core) */
+function fetchData() {
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/qtun/status")%>', null,
+        function(x, data) {
+            if (!data) return;
+
+            /* MODE + AUTOSTART */
+            document.getElementById("mode-active").innerHTML = data.mode || "-";
+            if (data.mode) document.getElementById("mode").value = data.mode;
+
+            let enabled = (data.enabled == "1");
+            document.getElementById("autostart").checked = enabled;
+
+            let statusEl = document.getElementById("core-status");
+
+            /* =========================
+               STATUS ENGINE
+            ========================= */
+
+            if (coreActionState === "starting") {
+                if (data.running) {
+                    statusEl.innerHTML = "Running";
+                    statusEl.className = "status-badge running";
+                    coreActionState = "idle";
+
+                    if (!cachedIP) IP.getIPInfo();
+                } else {
+                    statusEl.innerHTML = "Starting...";
+                    statusEl.className = "status-badge";
+                }
+
+            } else if (coreActionState === "stopping") {
+                if (!data.running) {
+                    statusEl.innerHTML = "Stopped";
+                    statusEl.className = "status-badge stopped";
+                    coreActionState = "idle";
+                } else {
+                    statusEl.innerHTML = "Stopping...";
+                    statusEl.className = "status-badge";
+                }
+
+            } else {
+                /* Normal status */
+                if (data.running) {
+                    statusEl.innerHTML = "Running";
+                    statusEl.className = "status-badge running";
+
+                    if (!cachedIP) IP.getIPInfo();
+                } else {
+                    statusEl.innerHTML = "Stopped";
+                    statusEl.className = "status-badge stopped";
+                }
+            }
+
+            /* =========================
+               CLASH DASHBOARD CARD
+            ========================= */
+            let clashCard = document.getElementById("clash-dashboard-card");
+
+            if (data.clash_running) {
+                clashCard.style.display = "block";
+            } else {
+                clashCard.style.display = "none";
+            }
+
+
+            let modeSelect = document.getElementById("mode");
+
+            if (data.running || coreActionState === "starting" || coreActionState === "stopping") {
+                /* LOCK MODE */
+                modeSelect.disabled = true;
+                modeSelect.style.opacity = "0.7";
+                modeSelect.style.cursor = "not-allowed";
+            } else {
+                /* UNLOCK MODE */
+                modeSelect.disabled = false;
+                modeSelect.style.opacity = "1";
+                modeSelect.style.cursor = "pointer";
+            }
+        }
+    );
+}
+
+/* AUTO REFRESH */
+setInterval(fetchData, 3000);
+
+/* INITIAL */
+document.addEventListener('DOMContentLoaded', (event) => {
+    fetchData();
+    IP.getIPInfo();
+});
+
+</script>
+
+<%+footer%>

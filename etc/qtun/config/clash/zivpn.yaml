@@ -1,0 +1,97 @@
+mixed-port: 7890
+redir-port: 7892
+allow-lan: true
+bind-address: "*"
+mode: rule
+log-level: info
+ipv6: false
+
+external-controller: 0.0.0.0:9090
+external-ui: ./dashboard
+secret: ""
+
+global-client-fingerprint: chrome
+unified-delay: true
+tcp-concurrent: true
+find-process-mode: strict
+
+sniffer:
+  enable: true
+  sniff:
+    HTTP:
+      ports:
+        - 80
+        - 8080-8880
+    TLS:
+      ports:
+        - 443
+        - 8443
+  force-dns-mapping: true
+  parse-pure-ip: true
+
+proxies:
+  - name: "Hysteria Turbo"
+    type: socks5
+    server: 127.0.0.1
+    port: 1080
+    udp: true
+
+proxy-groups:
+  - name: "ZIVPN Turbo"
+    type: select
+    proxies:
+      - "Hysteria Turbo"
+      - "DIRECT"
+
+  - name: "Keep-Alive"
+    type: url-test
+    proxies:
+      - "Hysteria Turbo"
+    url: http://www.gstatic.com/generate_204
+    interval: 20
+    tolerance: 500
+
+dns:
+  enable: true
+  ipv6: false
+  listen: 0.0.0.0:1053
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+    - "localhost.ptlogin2.qq.com"
+    - "time.windows.com"
+    - "pool.ntp.org"
+
+  default-nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+    - 223.5.5.5
+
+  nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+    - https://dns.google/dns-query
+
+  fallback:
+    - https://1.1.1.1/dns-query
+    - 9.9.9.9
+
+  fallback-filter:
+    geoip: true
+    ipcidr:
+      - 240.0.0.0/4
+
+rules:
+  - IP-CIDR,103.151.141.19/32,DIRECT,no-resolve
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,224.0.0.0/4,DIRECT,no-resolve
+  - IP-CIDR,240.0.0.0/4,DIRECT,no-resolve
+  - DST-PORT,53,DIRECT
+  - MATCH,ZIVPN Turbo
