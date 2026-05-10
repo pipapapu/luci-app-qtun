@@ -26,17 +26,14 @@ jobs:
           - arch: amd64
             target: x86
             subtarget: 64
-            pkgtype: apk
 
           - arch: arm64
             target: armsr
             subtarget: armv8
-            pkgtype: apk
 
           - arch: arm
             target: armvirt
             subtarget: 32
-            pkgtype: ipk
 
     steps:
       - name: Checkout repository
@@ -52,11 +49,13 @@ jobs:
             rsync unzip zlib1g-dev file wget curl jq ca-certificates \
             patch pkgconf xz-utils tar
 
-      - name: Clone OpenWrt
+      # USE STABLE 23.05 => default IPK/opkg
+      - name: Clone OpenWrt 23.05
         run: |
-          git clone --depth 1 https://github.com/openwrt/openwrt.git openwrt
-          cd openwrt
+          git clone --depth 1 --branch openwrt-23.05 \
+            https://github.com/openwrt/openwrt.git openwrt
 
+          cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
@@ -69,7 +68,7 @@ jobs:
             --exclude=.github \
             ./ openwrt/package/luci-app-qtun/
 
-      - name: Configure target
+      - name: Configure target (FORCE IPK)
         run: |
           cd openwrt
 
@@ -79,7 +78,12 @@ jobs:
 
           CONFIG_PACKAGE_luci-app-qtun=y
 
-          # Build package only
+          # FORCE IPK / OPKG
+          CONFIG_USE_APK=n
+          CONFIG_USE_OPKG=y
+          CONFIG_PACKAGE_opkg=y
+
+          # CI optimization
           CONFIG_ALL_KMODS=n
           CONFIG_ALL_NONSHARED=n
           CONFIG_DEVEL=n
@@ -87,6 +91,9 @@ jobs:
           EOF
 
           make defconfig
+
+          echo "=== PACKAGE SYSTEM ==="
+          grep -E 'CONFIG_USE_APK|CONFIG_USE_OPKG|CONFIG_PACKAGE_opkg' .config || true
 
       - name: Download sources
         run: |
@@ -112,36 +119,30 @@ jobs:
       - name: Debug package output
         run: |
           cd openwrt
-          echo "=== TARGET BIN ==="
-          find bin/targets -type f | grep -E "qtun|apk|ipk" || true
+          echo "=== QTUN PACKAGE FILES ==="
+          find bin/ -type f | grep -E "qtun|ipk" || true
 
-          echo "=== PACKAGE BIN ==="
-          find bin/packages -type f | grep -E "qtun|apk|ipk" || true
-
-      - name: Collect packages
+      - name: Collect IPK packages
         run: |
           rm -rf release
           mkdir -p release
 
-          # OpenWrt SNAPSHOT newer targets may output .apk instead of .ipk
-          find openwrt/bin/ -type f \( -name "*luci-app-qtun*.ipk" -o -name "*luci-app-qtun*.apk" \) | while read file; do
-            ext="${file##*.}"
+          find openwrt/bin/ -type f -name "*luci-app-qtun*.ipk" | while read file; do
             base=$(basename "$file")
-            cp "$file" "release/${base%.*}_${{ matrix.arch }}.${ext}"
+            cp "$file" "release/${base%.ipk}_${{ matrix.arch }}.ipk"
           done
 
           echo "=== Release contents ==="
           ls -lah release
 
-          test "$(find release -type f | wc -l)" -gt 0
+          # HARD FAIL if no ipk
+          test "$(find release -type f -name '*.ipk' | wc -l)" -gt 0
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: luci-app-qtun-${{ matrix.arch }}
-          path: |
-            release/*.ipk
-            release/*.apk
+          path: release/*.ipk
           if-no-files-found: error
 
   release:
@@ -158,7 +159,7 @@ jobs:
       - name: Show release files
         run: |
           echo "=== ALL RELEASE FILES ==="
-          find artifacts -type f \( -name "*.ipk" -o -name "*.apk" \) -print
+          find artifacts -type f -name "*.ipk" -print
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -167,6 +168,4 @@ jobs:
           name: luci-app-qtun ${{ github.event.inputs.tag }}
           draft: false
           prerelease: false
-          files: |
-            artifacts/**/*.ipk
-            artifacts/**/*.apk
+          files: artifacts/**/*.ipk
