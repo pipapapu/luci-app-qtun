@@ -103,19 +103,26 @@ jobs:
       - name: Build package
         run: |
           cd openwrt
-          make package/luci-app-qtun/{clean,compile} -j$(nproc) V=s
+          make package/luci-app-qtun/{clean,compile} -j1 V=sc
+
+      - name: Debug package search
+        run: |
+          cd openwrt
+          echo "=== QTUN PACKAGE SEARCH ==="
+          find bin/ -type f | grep -E "qtun|ipk" || true
 
       - name: Collect packages
         run: |
           rm -rf release
           mkdir -p release
 
-          find openwrt/bin/packages/ -type f -name "*.ipk" | while read file; do
+          find openwrt/bin/ -type f -name "*luci-app-qtun*.ipk" | while read file; do
             base=$(basename "$file")
             cp "$file" "release/${base%.ipk}_${{ matrix.arch }}.ipk"
           done
 
-          ls -lah release
+          echo "=== Release contents ==="
+          ls -lah release || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -137,6 +144,7 @@ jobs:
 
       - name: Show release files
         run: |
+          echo "=== ALL RELEASE FILES ==="
           find artifacts -type f -name "*.ipk" -print
 
       - name: Create GitHub Release
