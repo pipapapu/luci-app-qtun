@@ -13,6 +13,7 @@ PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=Azy <azyanggara2707@gmail.com>
 
 include $(INCLUDE_DIR)/package.mk
+include $(TOPDIR)/feeds/luci/luci.mk
 
 
 define Package/luci-app-qtun
@@ -21,8 +22,7 @@ define Package/luci-app-qtun
   SUBMENU:=3. Applications
   TITLE:=LuCI interface for Q-Tunneling
   URL:=https://github.com/QcomWrt/luci-app-qtun
-  DEPENDS:=+luci +bash +curl +ca-bundle +ca-certificates +gunzip +jq
-  PKGARCH:=all
+  DEPENDS:=+luci-base +bash +curl +ca-bundle +ca-certificates +gunzip +jq
 endef
 
 define Package/luci-app-qtun/description
@@ -59,6 +59,8 @@ endif
 
 
 define Build/Prepare
+	$(call Build/Prepare/Default)
+
 	mkdir -p $(PKG_BUILD_DIR)/cores
 
 	curl -fL $(MIHOMO_URL)/mihomo-linux-$(M_ARCH)-$(MIHOMO_VER).gz \
@@ -78,6 +80,7 @@ endef
 
 
 define Build/Compile
+	true
 endef
 
 
