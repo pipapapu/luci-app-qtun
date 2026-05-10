@@ -55,7 +55,7 @@ jobs:
           cd openwrt
 
           ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          ./scripts/feeds install luci
 
       - name: Copy package into OpenWrt tree
         run: |
@@ -76,7 +76,7 @@ jobs:
 
           CONFIG_PACKAGE_luci-app-qtun=y
 
-          # Faster CI
+          # Faster CI / package focused
           CONFIG_ALL_KMODS=n
           CONFIG_ALL_NONSHARED=n
           CONFIG_DEVEL=n
