@@ -16,7 +16,7 @@ define Package/luci-app-qtun
   TITLE:=LuCI interface for Q-Tunneling
   URL:=https://github.com/QcomWrt/luci-app-qtun
   # Tambahkan luci-compat agar jalan di OpenWrt 21, 22, 23
-  DEPENDS:=+bash +curl +ca-bundle +ca-certificates +gunzip +jq +luci-compat
+  DEPENDS:=+bash +curl +ca-bundle +ca-certificates +jq +luci-compat
   # JANGAN gunakan PKGARCH:=all karena ada binary di dalamnya
 endef
 
