@@ -13,7 +13,6 @@ PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=Azy <azyanggara2707@gmail.com>
 
 include $(INCLUDE_DIR)/package.mk
-include $(TOPDIR)/feeds/luci/luci.mk
 
 
 define Package/luci-app-qtun
@@ -22,13 +21,19 @@ define Package/luci-app-qtun
   SUBMENU:=3. Applications
   TITLE:=LuCI interface for Q-Tunneling
   URL:=https://github.com/QcomWrt/luci-app-qtun
-  DEPENDS:=+luci-base +bash +curl +ca-bundle +ca-certificates +gunzip +jq
+  DEPENDS:=+bash +curl +ca-bundle +ca-certificates +gunzip +jq
+  PKGARCH:=all
 endef
 
 define Package/luci-app-qtun/description
- LuCI interface for Q-Tunneling with ZiVPN, Clash (Mihomo),
- SSH, SSH-WS, SSH-SSL and Q-Load core support.
+ Universal LuCI interface for Q-Tunneling with ZiVPN,
+ Clash (Mihomo), SSH, SSH-WS, SSH-SSL and Q-Load core support.
 endef
+
+
+LUCI_TITLE:=Q-Tunneling
+LUCI_DEPENDS:=+luci-compat
+LUCI_PKGARCH:=all
 
 
 MIHOMO_VER:=v1.19.9
@@ -40,7 +45,7 @@ QLOAD_URL:=https://github.com/QcomWrt/Q-load/releases/download/$(QLOAD_VER)
 ZIVPN_URL:=https://github.com/zahidbd2/udp-zivpn/releases/download/$(ZIVPN_VER)
 
 
-# OpenWrt uses GNU target names like x86_64, aarch64_generic, arm_cortex-a7, etc.
+# Runtime binary architecture mapping
 ifneq ($(findstring x86_64,$(ARCH)),)
   M_ARCH:=amd64
   Q_ARCH:=amd64
@@ -62,6 +67,7 @@ define Build/Prepare
 	$(call Build/Prepare/Default)
 
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)/cores
+	rm -f $(PKG_BUILD_DIR)/cores/*
 
 	curl -fL $(MIHOMO_URL)/mihomo-linux-$(M_ARCH)-compatible-$(MIHOMO_VER).gz \
 		-o $(PKG_BUILD_DIR)/cores/clash.gz
@@ -73,9 +79,10 @@ define Build/Prepare
 	curl -fL $(ZIVPN_URL)/udp-zivpn-linux-$(Z_ARCH) \
 		-o $(PKG_BUILD_DIR)/cores/zivpn
 
-	chmod +x $(PKG_BUILD_DIR)/cores/clash
-	chmod +x $(PKG_BUILD_DIR)/cores/q-load
-	chmod +x $(PKG_BUILD_DIR)/cores/zivpn
+	chmod +x \
+		$(PKG_BUILD_DIR)/cores/clash \
+		$(PKG_BUILD_DIR)/cores/q-load \
+		$(PKG_BUILD_DIR)/cores/zivpn
 endef
 
 
@@ -85,36 +92,34 @@ endef
 
 
 define Package/luci-app-qtun/install
-	# UCI config
+
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./etc/config/qtun $(1)/etc/config/qtun
 
-	# Init service
+
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./etc/init.d/qtun_autoboot $(1)/etc/init.d/qtun_autoboot
 
-	# Main dirs
-	$(INSTALL_DIR) $(1)/etc/qtun
+
 	$(INSTALL_DIR) $(1)/etc/qtun/action
-	$(INSTALL_DIR) $(1)/etc/qtun/config
 	$(INSTALL_DIR) $(1)/etc/qtun/config/clash
 	$(INSTALL_DIR) $(1)/etc/qtun/config/zivpn
 	$(INSTALL_DIR) $(1)/etc/qtun/core
 	$(INSTALL_DIR) $(1)/etc/qtun/run
 
-	# Scripts
+
 	$(INSTALL_BIN) ./etc/qtun/action/*.sh $(1)/etc/qtun/action/
 
-	# Config templates
+
 	$(INSTALL_CONF) ./etc/qtun/config/clash/zivpn.yaml \
 		$(1)/etc/qtun/config/clash/zivpn.yaml
 
-	# Core binaries
+
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/clash $(1)/etc/qtun/core/clash
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/q-load $(1)/etc/qtun/core/q-load
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/zivpn $(1)/etc/qtun/core/zivpn
 
-	# LuCI files
+
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci
 	$(CP) ./usr/lib/lua/luci/* $(1)/usr/lib/lua/luci/
 endef
