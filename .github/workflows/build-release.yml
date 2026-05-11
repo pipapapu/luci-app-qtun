@@ -24,7 +24,7 @@ jobs:
           - arch: arm64
             sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/armsr/armv8/openwrt-sdk-23.05.0-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
           - arch: arm
-            sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/armvirt/32/openwrt-sdk-23.05.0-armvirt-32_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/armsr/armv7/openwrt-sdk-23.05.0-armsr-armv7_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
 
     steps:
       - name: Checkout
