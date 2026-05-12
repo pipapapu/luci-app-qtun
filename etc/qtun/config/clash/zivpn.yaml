@@ -7,7 +7,7 @@ log-level: info
 ipv6: false
 
 external-controller: 0.0.0.0:9090
-external-ui: ./dashboard
+external-ui: ./ui
 secret: ""
 
 global-client-fingerprint: chrome

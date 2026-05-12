@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build (${{ matrix.arch }})
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
@@ -30,34 +31,64 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set Version from Tag
+        run: |
+          VERSION="${{ github.event.inputs.tag }}"
+          VERSION="${VERSION#v}"
+          echo "QTUN_VERSION=$VERSION" >> $GITHUB_ENV
+
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential clang flex bison gawk gettext git libncurses5-dev libssl-dev python3-setuptools rsync unzip zlib1g-dev file wget curl
+          sudo apt install -y \
+            build-essential clang flex bison gawk gettext git \
+            libncurses5-dev libssl-dev python3-setuptools \
+            rsync unzip zlib1g-dev file wget curl
 
       - name: Setup SDK
         run: |
-          wget -O sdk.tar.xz ${{ matrix.sdk_url }}
-          mkdir sdk && tar -xf sdk.tar.xz -C sdk --strip-components=1
+          wget -O sdk.tar.xz "${{ matrix.sdk_url }}"
+          mkdir sdk
+          tar -xf sdk.tar.xz -C sdk --strip-components=1
+
           cd sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
+      - name: Inject Dynamic Version into Makefile
+        run: |
+          mkdir -p workdir
+          rsync -av ./ workdir/ \
+            --exclude=sdk \
+            --exclude=workdir \
+            --exclude=.git \
+            --exclude=.github
+
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${QTUN_VERSION}/" workdir/Makefile
+
+          echo "==== Patched Makefile ===="
+          grep "^PKG_VERSION" workdir/Makefile
 
       - name: Build Package
         run: |
           cd sdk
           mkdir -p package/luci-app-qtun
-          rsync -av ../ package/luci-app-qtun/ --exclude=sdk --exclude=.git --exclude=.github
+          rsync -av ../workdir/ package/luci-app-qtun/
+
           make defconfig
-          # Build hanya paket qtun
           make package/luci-app-qtun/compile V=s
 
       - name: Collect Artifacts
         run: |
           mkdir -p release
+
           find sdk/bin/packages/ -type f -name "luci-app-qtun*.ipk" -exec cp {} release/ \;
+
           cd release
-          for f in *.ipk; do mv "$f" "${f%.ipk}_${{ matrix.arch }}.ipk"; done
+          for f in *.ipk; do
+            BASENAME="${f%%_*}"
+            mv "$f" "${BASENAME}_${QTUN_VERSION}_${{ matrix.arch }}.ipk"
+          done
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -66,8 +97,10 @@ jobs:
           path: release/*.ipk
 
   release:
+    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
@@ -82,3 +115,38 @@ jobs:
           name: Release ${{ github.event.inputs.tag }}
           files: ./all-artifacts/*.ipk
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-makefile:
+    name: Update Makefile Version
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update PKG_VERSION
+        run: |
+          VERSION="${{ github.event.inputs.tag }}"
+          VERSION="${VERSION#v}"
+
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${VERSION}/" Makefile
+
+          echo "==== Updated Makefile ===="
+          grep "^PKG_VERSION" Makefile
+
+      - name: Commit & Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Makefile
+
+          if git diff --cached --quiet; then
+            echo "No version change detected."
+          else
+            git commit -m "Bump PKG_VERSION to ${{ github.event.inputs.tag }}"
+            git push
+          fi

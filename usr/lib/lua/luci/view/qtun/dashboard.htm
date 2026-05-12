@@ -64,8 +64,8 @@
                 Open YACD
             </button>
 
-            <button class="clash-btn zashboard-btn" onclick="openZashboard()">
-                Open Zashboard
+            <button class="clash-btn metacubexd-btn" onclick="openmetacubexd()">
+                Open metacubexd
             </button>
         </div>
     </div>
@@ -130,7 +130,7 @@
     color: white;
 }
 
-.zashboard-btn {
+.metacubexd-btn {
     background: #9C27B0;
     color: white;
 }
@@ -247,11 +247,11 @@ function restartTunnel() {
 
 
 function openYacd() {
-    window.open('http://' + window.location.hostname + ':9090/ui/', '_blank');
+    window.open('http://' + window.location.hostname + ':9090/ui/yacd', '_blank');
 }
 
-function openZashboard() {
-    window.open('http://' + window.location.hostname + ':9090/ui/zashboard', '_blank');
+function openMetacubexd() {
+    window.open('http://' + window.location.hostname + ':9090/ui/metacubexd', '_blank');
 }
 
 /* STATUS FETCH (Hanya untuk Core) */

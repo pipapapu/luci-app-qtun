@@ -107,15 +107,15 @@ define Package/luci-app-qtun/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/zivpn $(1)/etc/qtun/core/zivpn
 
 	$(INSTALL_DIR) $(1)/etc/qtun/ui/yacd
-	$(CP) $(PKG_BUILD_DIR)/ui/yacd/* $(1)/etc/qtun/ui/yacd/
+	$(CP) $(PKG_BUILD_DIR)/ui/yacd/* $(1)/etc/qtun/config/clash/ui/yacd/
 
 	$(INSTALL_DIR) $(1)/etc/qtun/ui/metacubexd
-	$(CP) $(PKG_BUILD_DIR)/ui/metacubexd/* $(1)/etc/qtun/ui/metacubexd/
+	$(CP) $(PKG_BUILD_DIR)/ui/metacubexd/* $(1)/etc/qtun/config/clash/ui/metacubexd/
 
 	$(INSTALL_DIR) $(1)/etc/qtun/data
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.metadb $(1)/etc/qtun/data/geoip.metadb
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.dat $(1)/etc/qtun/data/geoip.dat
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geosite.dat $(1)/etc/qtun/data/geosite.dat
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.metadb $(1)/etc/qtun/config/clash/geoip.metadb
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.dat $(1)/etc/qtun/config/clash/geoip.dat
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geosite.dat $(1)/etc/qtun/config/clash/geosite.dat
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci
 	$(CP) ./usr/lib/lua/luci/* $(1)/usr/lib/lua/luci/
