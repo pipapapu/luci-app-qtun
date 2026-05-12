@@ -48,9 +48,21 @@ MIHOMO_VER:=v1.19.9
 QLOAD_VER:=v1.0.0
 ZIVPN_VER:=udp-zivpn_1.4.9
 
+YACD_VER:=gh-pages
+METACUBEXD_VER:=gh-pages
+
+GEOIP_VER:=latest
+GEOSITE_VER:=latest
+MMDB_URL:=https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.metadb
+GEOIP_URL:=https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.dat
+GEOSITE_URL:=https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat
+
 define Build/Prepare
 	$(call Build/Prepare/Default)
 	mkdir -p $(PKG_BUILD_DIR)/cores
+	mkdir -p $(PKG_BUILD_DIR)/ui/yacd
+	mkdir -p $(PKG_BUILD_DIR)/ui/metacubexd
+	mkdir -p $(PKG_BUILD_DIR)/data
 	
 	# Download Cores secara dinamis saat build
 	curl -fL https://github.com/MetaCubeX/Mihomo/releases/download/$(MIHOMO_VER)/mihomo-linux-$(M_ARCH)-$(MIHOMO_VER).gz -o $(PKG_BUILD_DIR)/cores/clash.gz
@@ -59,6 +71,18 @@ define Build/Prepare
 
 	curl -fL https://github.com/QcomWrt/Q-load/releases/download/$(QLOAD_VER)/q-load-linux-$(Q_ARCH) -o $(PKG_BUILD_DIR)/cores/q-load
 	curl -fL https://github.com/zahidbd2/udp-zivpn/releases/download/$(ZIVPN_VER)/udp-zivpn-linux-$(Z_ARCH) -o $(PKG_BUILD_DIR)/cores/zivpn
+
+	curl -fL https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/$(YACD_VER).tar.gz -o $(PKG_BUILD_DIR)/yacd.tar.gz
+	tar -xzf $(PKG_BUILD_DIR)/yacd.tar.gz -C $(PKG_BUILD_DIR)
+	cp -r $(PKG_BUILD_DIR)/Yacd-meta-$(YACD_VER)/* $(PKG_BUILD_DIR)/ui/yacd/
+
+	curl -fL https://github.com/MetaCubeX/metacubexd/archive/refs/heads/$(METACUBEXD_VER).tar.gz -o $(PKG_BUILD_DIR)/metacubexd.tar.gz
+	tar -xzf $(PKG_BUILD_DIR)/metacubexd.tar.gz -C $(PKG_BUILD_DIR)
+	cp -r $(PKG_BUILD_DIR)/metacubexd-$(METACUBEXD_VER)/* $(PKG_BUILD_DIR)/ui/metacubexd/
+
+	curl -fL $(MMDB_URL) -o $(PKG_BUILD_DIR)/data/geoip.metadb
+	curl -fL $(GEOIP_URL) -o $(PKG_BUILD_DIR)/data/geoip.dat
+	curl -fL $(GEOSITE_URL) -o $(PKG_BUILD_DIR)/data/geosite.dat
 	
 	chmod +x $(PKG_BUILD_DIR)/cores/*
 endef
@@ -81,6 +105,17 @@ define Package/luci-app-qtun/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/clash_core $(1)/etc/qtun/core/clash
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/q-load $(1)/etc/qtun/core/q-load
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/zivpn $(1)/etc/qtun/core/zivpn
+
+	$(INSTALL_DIR) $(1)/etc/qtun/ui/yacd
+	$(CP) $(PKG_BUILD_DIR)/ui/yacd/* $(1)/etc/qtun/ui/yacd/
+
+	$(INSTALL_DIR) $(1)/etc/qtun/ui/metacubexd
+	$(CP) $(PKG_BUILD_DIR)/ui/metacubexd/* $(1)/etc/qtun/ui/metacubexd/
+
+	$(INSTALL_DIR) $(1)/etc/qtun/data
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.metadb $(1)/etc/qtun/data/geoip.metadb
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.dat $(1)/etc/qtun/data/geoip.dat
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geosite.dat $(1)/etc/qtun/data/geosite.dat
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci
 	$(CP) ./usr/lib/lua/luci/* $(1)/usr/lib/lua/luci/
