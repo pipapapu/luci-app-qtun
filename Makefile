@@ -106,13 +106,13 @@ define Package/luci-app-qtun/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/q-load $(1)/etc/qtun/core/q-load
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cores/zivpn $(1)/etc/qtun/core/zivpn
 
-	$(INSTALL_DIR) $(1)/etc/qtun/ui/yacd
+	$(INSTALL_DIR) $(1)/etc/qtun/config/clash/ui/yacd
 	$(CP) $(PKG_BUILD_DIR)/ui/yacd/* $(1)/etc/qtun/config/clash/ui/yacd/
 
-	$(INSTALL_DIR) $(1)/etc/qtun/ui/metacubexd
+	$(INSTALL_DIR) $(1)/etc/qtun/config/clash/ui/metacubexd
 	$(CP) $(PKG_BUILD_DIR)/ui/metacubexd/* $(1)/etc/qtun/config/clash/ui/metacubexd/
 
-	$(INSTALL_DIR) $(1)/etc/qtun/data
+	$(INSTALL_DIR) $(1)/etc/qtun/config/clash
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.metadb $(1)/etc/qtun/config/clash/geoip.metadb
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geoip.dat $(1)/etc/qtun/config/clash/geoip.dat
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/geosite.dat $(1)/etc/qtun/config/clash/geosite.dat
