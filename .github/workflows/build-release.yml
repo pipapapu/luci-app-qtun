@@ -21,15 +21,18 @@ jobs:
       matrix:
         include:
           - arch: x86_64
-            sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/x86/64/openwrt-sdk-23.05.0-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            target: x86/64
           - arch: aarch64_generic
-            sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/armsr/armv8/openwrt-sdk-23.05.0-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            target: armsr/armv8
           - arch: aarch64_cortex-a53
-            sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/sunxi/cortexa53/openwrt-sdk-23.05.0-sunxi-cortexa53_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            target: sunxi/cortexa53
           - arch: arm_cortex-a7_neon-vfpv4
-            sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/sunxi/cortexa7/openwrt-sdk-23.05.0-sunxi-cortexa7_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
+            target: sunxi/cortexa7
           - arch: arm_cortex-a9
-            sdk_url: https://downloads.openwrt.org/releases/23.05.0/targets/mvebu/cortexa9/openwrt-sdk-23.05.0-mvebu-cortexa9_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
+            target: mvebu/cortexa9
+
+    env:
+      OWRT_VER: 23.05.0
 
     steps:
       - name: Checkout
@@ -64,7 +67,14 @@ jobs:
 
       - name: Setup SDK
         run: |
-          wget -O sdk.tar.xz "${{ matrix.sdk_url }}"
+          TARGET="$(echo '${{ matrix.target }}' | tr '/' '-')"
+
+          SDK_URL="https://downloads.openwrt.org/releases/${OWRT_VER}/targets/${{ matrix.target }}/openwrt-sdk-${OWRT_VER}-${TARGET}_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+
+          echo "$SDK_URL"
+
+          wget -O sdk.tar.xz "$SDK_URL"
+
           mkdir sdk
           tar -xf sdk.tar.xz -C sdk --strip-components=1
 
@@ -112,9 +122,114 @@ jobs:
           name: qtun-${{ matrix.arch }}
           path: release/*.ipk
 
+  build-apk:
+    name: Build APK (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86/64
+          - arch: aarch64_generic
+            target: armsr/armv8
+          - arch: aarch64_cortex-a53
+            target: sunxi/cortexa53
+          - arch: arm_cortex-a7_neon-vfpv4
+            target: sunxi/cortexa7
+          - arch: arm_cortex-a9
+            target: mvebu/cortexa9
+
+    env:
+      OWRT_VER: 25.12.0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse Tag
+        run: |
+          RAW="${{ github.event.inputs.tag }}"
+          RAW="${RAW#v}"
+
+          if echo "$RAW" | grep -q -- "-r"; then
+            VERSION="${RAW%-r*}"
+            RELEASE="${RAW##*-r}"
+            FINAL_VERSION="${VERSION}-${RELEASE}"
+          else
+            VERSION="$RAW"
+            RELEASE="1"
+            FINAL_VERSION="${VERSION}"
+          fi
+
+          echo "QTUN_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "QTUN_RELEASE=$RELEASE" >> $GITHUB_ENV
+          echo "QTUN_FINAL_VERSION=$FINAL_VERSION" >> $GITHUB_ENV
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential clang flex bison gawk gettext git \
+            libncurses5-dev libssl-dev python3-setuptools \
+            rsync unzip zlib1g-dev file wget curl zstd
+
+      - name: Setup SDK
+        run: |
+          TARGET="$(echo '${{ matrix.target }}' | tr '/' '-')"
+
+          SDK_URL="https://downloads.openwrt.org/releases/${OWRT_VER}/targets/${{ matrix.target }}/openwrt-sdk-${OWRT_VER}-${TARGET}_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+
+          echo "$SDK_URL"
+
+          wget -O sdk.tar.zst "$SDK_URL"
+
+          mkdir sdk
+          tar --use-compress-program=unzstd -xf sdk.tar.zst -C sdk --strip-components=1
+
+          cd sdk
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Inject Dynamic Version into Makefile
+        run: |
+          mkdir -p workdir
+          rsync -av ./ workdir/ \
+            --exclude=sdk \
+            --exclude=workdir \
+            --exclude=.git \
+            --exclude=.github
+
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${QTUN_VERSION}/" workdir/Makefile
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${QTUN_RELEASE}/" workdir/Makefile
+
+      - name: Build Package
+        run: |
+          cd sdk
+          mkdir -p package/luci-app-qtun
+          rsync -av ../workdir/ package/luci-app-qtun/
+
+          make defconfig
+          make package/luci-app-qtun/compile V=s
+
+      - name: Collect APK Artifacts
+        run: |
+          mkdir -p release
+
+          find sdk/bin/packages/ -type f -name "luci-app-qtun*.apk" | while read f; do
+            cp "$f" "release/luci-app-qtun_${QTUN_FINAL_VERSION}_${{ matrix.arch }}.apk"
+          done
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qtun-apk-${{ matrix.arch }}
+          path: release/*.apk
+
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, build-apk]
     runs-on: ubuntu-latest
 
     steps:
@@ -129,7 +244,9 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag }}
           name: Release ${{ github.event.inputs.tag }}
-          files: ./all-artifacts/*.ipk
+          files: |
+            ./all-artifacts/*.ipk
+            ./all-artifacts/*.apk
           token: ${{ secrets.GITHUB_TOKEN }}
 
   bump-makefile:
