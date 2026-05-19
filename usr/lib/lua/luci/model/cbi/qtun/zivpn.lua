@@ -58,37 +58,45 @@ return function(s, mode_selector)
     resolver:depends("mode_selector", "zivpn")
     resolver.write = function() end
 
-    local down = s:option(Value, "z_down_mbps", "Download Mbps")
+    local down = s:option(Value, "z_down_mbps", "Download Mbps (0 = Tanpa Batasan)")
     down.datatype = "uinteger"
-    down.default = zicfg.down_mbps or "50"
+    down.default = zicfg.down_mbps or "0" -- Diubah ke 0 agar secara default internet tidak dicekik/dibatasi
     down:depends("mode_selector", "zivpn")
     down.write = function() end
 
-    local up = s:option(Value, "z_up_mbps", "Upload Mbps")
+    local up = s:option(Value, "z_up_mbps", "Upload Mbps (0 = Tanpa Batasan)")
     up.datatype = "uinteger"
-    up.default = zicfg.up_mbps or "10"
+    up.default = zicfg.up_mbps or "0" -- Diubah ke 0 agar secara default internet tidak dicekik/dibatasi
     up:depends("mode_selector", "zivpn")
     up.write = function() end
 
     -- =========================================================
-    -- SAVE HOOK
+    -- SAVE HOOK (FIXED: Menggunakan validasi Section ID yang Benar)
     -- =========================================================
 
     local old_parse = s.parse
 
-    function s.parse(self, ...)
-        -- Mengambil nilai dari dropdown di config.lua
-        local current_mode = mode_selector:formvalue("main")
+    function s.parse(self, section, ...)
+        -- Mengambil ID section yang aktif dari sistem LuCI secara dinamis
+        local sid = section or "main"
+        local current_mode = mode_selector:formvalue(sid)
         
         if current_mode == "zivpn" then
-            local server_host = srv:formvalue("main") or ""
-            local port_range = ports:formvalue("main") or ""
+            local server_host = srv:formvalue(sid) or ""
+            local port_range = ports:formvalue(sid) or ""
 
             local full_server = ""
             if server_host ~= "" then
                 full_server = server_host .. ":" .. port_range
             end
 
+            -- Mengamankan konversi angka agar tidak memicu crash %d jika form kosong
+            local raw_down = down:formvalue(sid)
+            local raw_up = up:formvalue(sid)
+            local val_down = tonumber(raw_down) or 0
+            local val_up = tonumber(raw_up) or 0
+
+            -- Menyusun JSON secara bersih dan presisi
             local json_data = string.format([[
 {
   "server": %q,
@@ -107,19 +115,23 @@ return function(s, mode_selector)
 }
 ]],
                 full_server,
-                obfs:formvalue("main") or "hu``hqb`c",
-                auth:formvalue("main") or "",
-                (insecure:formvalue("main") == "1") and "true" or "false",
-                resolver:formvalue("main") or "8.8.8.8:53",
-                tonumber(down:formvalue("main")) or 50,
-                tonumber(up:formvalue("main")) or 10
+                obfs:formvalue(sid) or "hu``hqb`c",
+                auth:formvalue(sid) or "",
+                (insecure:formvalue(sid) == "1") and "true" or "false",
+                resolver:formvalue(sid) or "8.8.8.8:53",
+                val_down,
+                val_up
             )
 
+            -- Simpan file secara aman
             fs.mkdirr(base_dir)
             fs.writefile(path, json_data)
+            
+            -- Sinkronisasi juga ke UCI agar sistem utama OpenWrt tahu mode apa yang aktif
+            self.map.uci:set("qtun", "main", "mode", "zivpn")
         end
 
-        old_parse(self, ...)
+        old_parse(self, section, ...)
     end
 
 end
