@@ -1,127 +1,80 @@
 #!/bin/sh
 # /etc/qtun/action/routing.sh
-# QTUN Routing Engine
-# Redirect:
-# Router local traffic + Hotspot client traffic -> Mihomo (7890)
-# DNS -> Clash DNS (1053)
+# QTUN Routing Engine (Modern fw4/nftables Edition)
+# Dioptimalkan Khusus untuk OpenWrt Baru & Modem HP Android
 
-CLASH_PORT="7892"
+# Port Socks5 bawaan ZiVPN sesuai config.json Anda
+SOCKS_PORT="1080"
 DNS_PORT="1053"
 
-# Auto ambil ZiVPN server dari UCI
 SERVER_IP="$(uci -q get qtun.main.z_server | cut -d':' -f1)"
-
-QTUN_CHAIN="QTUN"
-QTUN_DNS_CHAIN="QTUN_DNS"
 
 log() {
     /etc/qtun/action/logs.sh process "$1"
 }
 
-create_chains() {
-    iptables -t nat -N $QTUN_CHAIN 2>/dev/null
-    iptables -t nat -N $QTUN_DNS_CHAIN 2>/dev/null
-}
-
-flush_chains() {
-    iptables -t nat -F $QTUN_CHAIN 2>/dev/null
-    iptables -t nat -F $QTUN_DNS_CHAIN 2>/dev/null
-}
-
-delete_hooks() {
-    iptables -t nat -D OUTPUT -p tcp -j $QTUN_CHAIN 2>/dev/null
-    iptables -t nat -D PREROUTING -i br-lan -p tcp -j $QTUN_CHAIN 2>/dev/null
-
-    iptables -t nat -D OUTPUT -p udp --dport 53 -j $QTUN_DNS_CHAIN 2>/dev/null
-    iptables -t nat -D OUTPUT -p tcp --dport 53 -j $QTUN_DNS_CHAIN 2>/dev/null
-
-    iptables -t nat -D PREROUTING -i br-lan -p udp --dport 53 -j $QTUN_DNS_CHAIN 2>/dev/null
-    iptables -t nat -D PREROUTING -i br-lan -p tcp --dport 53 -j $QTUN_DNS_CHAIN 2>/dev/null
-}
-
-destroy_chains() {
-    iptables -t nat -X $QTUN_CHAIN 2>/dev/null
-    iptables -t nat -X $QTUN_DNS_CHAIN 2>/dev/null
-}
-
-apply_bypass_rules() {
-    # Core local bypass
-    iptables -t nat -A $QTUN_CHAIN -d 0.0.0.0/8 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -d 10.0.0.0/8 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -d 127.0.0.0/8 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -d 169.254.0.0/16 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -d 172.16.0.0/12 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -d 192.168.0.0/16 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -d 224.0.0.0/4 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -d 240.0.0.0/4 -j RETURN
-
-    # Jangan loop ke ZiVPN server
-    [ -n "$SERVER_IP" ] && iptables -t nat -A $QTUN_CHAIN -d $SERVER_IP -j RETURN
-
-    # Jangan loop ke local proxy ports
-    iptables -t nat -A $QTUN_CHAIN -p tcp --dport 1080 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -p tcp --dport 7890 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -p tcp --dport 9090 -j RETURN
-    iptables -t nat -A $QTUN_CHAIN -p tcp --dport 1053 -j RETURN
-}
-
-apply_redirect_rules() {
-    # Semua TCP -> Clash
-    iptables -t nat -A $QTUN_CHAIN -p tcp -j REDIRECT --to-ports $CLASH_PORT
-
-    # DNS -> Clash DNS
-    iptables -t nat -A $QTUN_DNS_CHAIN -p udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
-    iptables -t nat -A $QTUN_DNS_CHAIN -p tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT
-}
-
-apply_hooks() {
-    # Router sendiri
-    iptables -t nat -A OUTPUT -p tcp -j $QTUN_CHAIN
-
-    # Client hotspot
-    iptables -t nat -A PREROUTING -i br-lan -p tcp -j $QTUN_CHAIN
-
-    # DNS Router
-    iptables -t nat -A OUTPUT -p udp --dport 53 -j $QTUN_DNS_CHAIN
-    iptables -t nat -A OUTPUT -p tcp --dport 53 -j $QTUN_DNS_CHAIN
-
-    # DNS Client hotspot
-    iptables -t nat -A PREROUTING -i br-lan -p udp --dport 53 -j $QTUN_DNS_CHAIN
-    iptables -t nat -A PREROUTING -i br-lan -p tcp --dport 53 -j $QTUN_DNS_CHAIN
+# Fungsi otomatis mencari interface modem HP Android Anda (usb0 atau rndis0)
+get_android_device() {
+    local dev=""
+    for d in usb0 rndis0 wwan0; do
+        if [ -d "/sys/class/net/$d" ]; then
+            dev="$d"
+            break
+        fi
+    done
+    echo "$dev"
 }
 
 start_routing() {
-    log "Applying iptables rules..."
-
+    log "Mengonfigurasi aturan nftables via fw4..."
     stop_routing
 
-    create_chains
-    flush_chains
+    local android_dev="$(get_android_device)"
+    
+    # 1. Buka jalur forwarding dasar untuk kartu jaringan ZiVPN (tun0)
+    nft add rule inet fw4 forward oifname "tun*" accept 2>/dev/null
+    nft add rule inet fw4 forward iifname "tun*" accept 2>/dev/null
+    nft add rule inet fw4 srcnat oifname "tun*" masquerade 2>/dev/null
 
-    apply_bypass_rules
-    apply_redirect_rules
-    apply_hooks
+    # 2. Jika terdeteksi menggunakan Tethering HP Android, buka jalur jembatannya
+    if [ -n "$android_dev" ]; then
+        log "Modem HP Android terdeteksi pada interface: $android_dev"
+        nft add rule inet fw4 forward oifname "$android_dev" accept 2>/dev/null
+        nft add rule inet fw4 forward iifname "$android_dev" accept 2>/dev/null
+        nft add rule inet fw4 srcnat oifname "$android_dev" masquerade 2>/dev/null
+    else
+        log "Menggunakan interface WAN standar (bukan HP Android)"
+    fi
 
-    log "iptables active"
+    # 3. Membuat aturan pembelokan (Redirect) ke Socks5 ZiVPN (Port 1080)
+    # Membuat chain kustom di nftables nat agar tidak mengacaukan firewall utama
+    nft create chain inet fw4 qtun_redirect { type nat hook prerouting priority dstnat \; } 2>/dev/null
+    nft flush chain inet fw4 qtun_redirect 2>/dev/null
+
+    # Aturan Bypass agar IP Lokal/IP Server tidak ikut terbelokkan (mencegah loop)
+    nft add rule inet fw4 qtun_redirect ip daddr { 127.0.0.0/8, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12 } return 2>/dev/null
+    [ -n "$SERVER_IP" ] && nft add rule inet fw4 qtun_redirect ip daddr $SERVER_IP return 2>/dev/null
+
+    # Belokkan semua lalu lintas TCP dari client ke Port ZiVPN
+    nft add rule inet fw4 qtun_redirect iifname "br-lan" ip protocol tcp redirect to :$SOCKS_PORT 2>/dev/null
+
+    log "Aturan routing qtun (fw4) berhasil diaktifkan"
 }
 
 stop_routing() {
-    log "Removing iptables rules..."
+    log "Menghapus aturan nftables qtun..."
 
-    delete_hooks
-    flush_chains
-    destroy_chains
-
-    log "iptables stopped"
+    # Hapus chain kustom redirect
+    nft delete chain inet fw4 qtun_redirect 2>/dev/null
+    
+    log "Aturan routing qtun berhasil dibersihkan"
 }
 
 status_routing() {
-    log "iptables NAT table:"
-    iptables -t nat -L $QTUN_CHAIN -n --line-numbers 2>/dev/null || log "QTUN chain not found"
-
-    echo ""
-    log "DNS NAT table:"
-    iptables -t nat -L $QTUN_DNS_CHAIN -n --line-numbers 2>/dev/null || log "QTUN_DNS chain not found"
+    local android_dev="$(get_android_device)"
+    log "Status Perangkat Modem Android: ${android_dev:-Tidak terdeteksi}"
+    log "Memeriksa tabel nftables qtun:"
+    nft list chain inet fw4 qtun_redirect 2>/dev/null || log "Chain qtun_redirect tidak aktif"
 }
 
 case "$1" in
