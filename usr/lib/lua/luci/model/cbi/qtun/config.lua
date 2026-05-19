@@ -1,3 +1,5 @@
+local fs = require "nixio.fs"
+
 m = Map("qtun", "QTUN - Tunnel Configuration")
 
 m.description = [[
@@ -16,23 +18,31 @@ m.description = [[
 s = m:section(NamedSection, "main", "global", "Edit Konfigurasi")
 s.addremove = false
 
--- Dropdown Mode (Hanya sebagai pengalih tampilan)
+-- Dropdown Mode
 mode = s:option(ListValue, "mode_selector", "Config Mode")
 mode:value("ssh", "SSH Direct")
--- mode:value("clash", "Clash (Vmess/Vless/Trojan)")
 mode:value("zivpn", "ZiVPN (UDP)")
 
--- Ambil mode aktif dari sistem hanya untuk dijadikan DEFAULT tampilan saat buka halaman
+-- Ambil mode aktif dari sistem
 local active_mode = m.uci:get("qtun", "main", "mode") or "zivpn"
 mode.default = active_mode
 
--- PENTING: Agar dropdown ini tidak tersimpan ke /etc/config/qtun
--- kita buat agar dia tidak menulis (non-persistent)
+-- Mencegah dropdown menulis langsung ke file /etc/config/qtun
 function mode.write() return end
 
--- Memuat sub-module
-dofile("/usr/lib/lua/luci/model/cbi/qtun/ssh.lua")(s, mode)
-dofile("/usr/lib/lua/luci/model/cbi/qtun/mihomo.lua")(s, mode)
-dofile("/usr/lib/lua/luci/model/cbi/qtun/zivpn.lua")(s, mode)
+-- FUNGSI PENGAMAN: Memuat sub-module dengan aman (Safe Load)
+local function safe_load(file_path, section, option)
+    if fs.access(file_path) then
+        local status, func = pcall(loadfile(file_path))
+        if status and type(func) == "function" then
+            pcall(func, section, option)
+        end
+    end
+end
+
+-- Memuat sub-module secara aman, jika file tidak ada maka sistem tidak akan crash
+safe_load("/usr/lib/lua/luci/model/cbi/qtun/ssh.lua", s, mode)
+safe_load("/usr/lib/lua/luci/model/cbi/qtun/mihomo.lua", s, mode)
+safe_load("/usr/lib/lua/luci/model/cbi/qtun/zivpn.lua", s, mode)
 
 return m
