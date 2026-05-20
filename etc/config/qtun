@@ -1,2 +1,4 @@
-config global 'main'
+config qtun 'main'
+    option enabled '0'
     option mode 'zivpn'
+
